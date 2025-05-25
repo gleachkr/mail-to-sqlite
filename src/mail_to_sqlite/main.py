@@ -44,22 +44,39 @@ def main():
     )
     parser.add_argument(
         "--clobber",
-        help="attributes to clobber. Options: " +
-             "thread_id, sender, recipients, subject, body, size, timestamp, is_outgoing, " +
-             "is_read, labels",
+        help=(
+            "attributes to clobber. Options: "
+            "thread_id, sender, recipients, subject, body, size, timestamp, "
+            "is_outgoing, is_read, labels"
+        ),
         nargs="*"
+    )
+    parser.add_argument(
+        "--download-attachments",
+        help="Download and store email attachments",
+        action="store_true",
     )
 
     args = parser.parse_args()
 
     prepare_data_dir(args.data_dir)
     db_conn = db.init(args.data_dir)
-    
+
     if args.message_id is None:
-        sync.all_messages(args.provider, args.data_dir, full_sync=args.full_sync, 
-                         clobber=args.clobber or [])
-    else: 
-        sync.single_message(args.provider, args.data_dir, args.message_id, 
-                          clobber=args.clobber or [])
+        sync.all_messages(
+            args.provider,
+            args.data_dir,
+            full_sync=args.full_sync,
+            clobber=args.clobber or [],
+            download_attachments=args.download_attachments,
+        )
+    else:
+        sync.single_message(
+            args.provider,
+            args.data_dir,
+            args.message_id,
+            clobber=args.clobber or [],
+            download_attachments=args.download_attachments,
+        )
 
     db_conn.close()

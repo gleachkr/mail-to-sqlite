@@ -1,6 +1,6 @@
 import imaplib
 import email
-from email.utils import parsedate_to_datetime
+from email.utils import parseaddr, parsedate_to_datetime
 from typing import Dict, List, Optional
 from datetime import datetime
 import re
@@ -54,7 +54,7 @@ class IMAPProvider(EmailProvider):
         
         # Parse From
         from_header = email_message.get('From', '')
-        from_name, from_email = email.utils.parseaddr(from_header)
+        from_name, from_email = parseaddr(from_header)
         msg_obj.sender = {"name": from_name, "email": from_email}
         
         # Parse To, CC, BCC
@@ -101,6 +101,22 @@ class IMAPProvider(EmailProvider):
         # Read status and outgoing
         msg_obj.is_read = True  # Default to true unless we can determine otherwise
         msg_obj.is_outgoing = from_email == self.username
+
+        msg_obj.attachments = []
+        for part in email_message.walk():
+            content_disposition = part.get("Content-Disposition", None)
+            if content_disposition and "attachment" in content_disposition.lower():
+                filename = part.get_filename()
+                if filename:
+                    payload = part.get_payload(decode=True)
+                    msg_obj.attachments.append({
+                        "message_id": msg_obj.id,
+                        "filename": filename,
+                        "content_type": part.get_content_type(),
+                        "size": len(payload) if payload else 0,
+                        "attachment_id": None,  # Not used for IMAP
+                        "content": payload      # The binary content
+                    })
         
         return msg_obj
     
@@ -123,41 +139,27 @@ class IMAPProvider(EmailProvider):
                         return self._parse_imap_message(raw_msg, {folder_name: folder_name})
         
         raise ValueError(f"Message with ID {message_id} not found")
-    
-    def list_messages(self, 
-                     query: Optional[List[str]] = None, 
-                     page_token: Optional[str] = None,
-                     max_results: int = 500) -> Dict:
-        """List messages, optionally filtered by query."""
-        if query is None:
-            query = ["ALL"]
+
+    def _list_messages_in_folder(self, folder_name: str, query: List[str], 
+                               start_idx: int = 1, max_results: int = 500) -> Dict:
+        """List messages in a single folder with pagination."""
+        self.conn.select('"' + folder_name + '"')
         
-        # page_token in IMAP is just the starting message number
-        start_idx = 1
-        if page_token:
-            start_idx = int(page_token)
+        # Build search criteria
+        search_criteria = " OR ".join(query)
+        search_criteria = "OR " + search_criteria + " NOT ALL"
+        typ, data = self.conn.search(None, search_criteria)
         
-        result = {"messages": [], "nextPageToken": None}
+        result = {"messages": [], "remaining": 0}
         
-        # We need to search each folder
-        labels = self.get_labels()
-        for folder_name in labels.keys():
-            self.conn.select('"' + folder_name + '"')
-            
-            # Combine query conditions for IMAP
-            search_criteria = " OR ".join(query)
-            search_criteria = "OR " + search_criteria + " NOT ALL"
-            typ, data = self.conn.search(None, search_criteria)
-            
-            if typ == 'OK':
-                message_nums = data[0].split()
-                # Apply pagination
-                end_idx = min(start_idx + max_results, len(message_nums))
+        if typ == 'OK':
+            message_nums = data[0].split()
+            total_msgs = len(message_nums)
+
+            # Apply pagination within this folder
+            end_idx = min(start_idx + max_results - 1, total_msgs)
+            if start_idx <= total_msgs:
                 batch = message_nums[start_idx-1:end_idx]
-                
-                # Check if there are more messages
-                if end_idx < len(message_nums):
-                    result["nextPageToken"] = str(end_idx + 1)
                 
                 for num in batch:
                     # Just get the headers and UID for listing
@@ -166,14 +168,58 @@ class IMAPProvider(EmailProvider):
                         msg_id = None
                         for response_part in msg_data:
                             if isinstance(response_part, tuple):
-                                msg_id_match = re.search(r'Message-ID: (\S+)', response_part[1].decode('utf-8'), re.IGNORECASE)
-                                if msg_id_match:
-                                    msg_id = msg_id_match.group(1)
-                                else:
-                                    print(response_part[1].decode('utf-8'))
+                                header_text = response_part[1].decode('utf-8')
+                                parsed_headers = email.message_from_string(header_text)
+                                msg_id = parsed_headers.get('Message-ID', '').strip('<>')
+                                if not msg_id: 
+                                    print("Warning. A message was missing the Message-ID header")
                         
                         if msg_id:
                             result["messages"].append({"id": msg_id})
+            
+            # Calculate how many messages remain in this folder
+            result["remaining"] = max(0, total_msgs - end_idx)
+        
+        return result
+    
+    def list_messages(self, query=None, page_token=None, max_results=500):
+        """List messages across all folders with proper pagination."""
+        if query is None:
+            query = ["ALL"]
+        
+        # Parse pagination token: "folder_idx:msg_idx"
+        folder_idx, msg_idx = 0, 1
+        if page_token:
+            folder_idx, msg_idx = map(int, page_token.split(':'))
+        
+        result = {"messages": [], "nextPageToken": None}
+        labels = list(self.get_labels().keys())
+        remaining_quota = max_results
+        
+        # Continue from where we left off
+        for i in range(folder_idx, len(labels)):
+            folder_result = self._list_messages_in_folder(
+                labels[i], query, msg_idx, remaining_quota
+            )
+
+            result["messages"].extend(folder_result["messages"])
+            remaining_quota -= len(folder_result["messages"])
+            
+            # If this folder has more messages, set next token
+            if folder_result["remaining"] > 0:
+                next_msg_idx = msg_idx + len(folder_result["messages"])
+                result["nextPageToken"] = f"{i}:{next_msg_idx}"
+                break
+            
+            # If we've filled our quota, move to next folder
+            if remaining_quota <= 0:
+                next_folder = i + 1 if i + 1 < len(labels) else None
+                if next_folder is not None:
+                    result["nextPageToken"] = f"{next_folder}:1"
+                break
+                
+            # Reset message index for next folder
+            msg_idx = 1
         
         return result
     
