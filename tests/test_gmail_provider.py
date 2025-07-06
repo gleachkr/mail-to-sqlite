@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 from mail_to_sqlite.providers.gmail import GmailProvider
+from googleapiclient.errors import HttpError
 
 class TestGmailProvider(unittest.TestCase):
     @patch('mail_to_sqlite.providers.gmail.build')
@@ -224,6 +225,113 @@ class TestGmailProvider(unittest.TestCase):
         self.assertEqual(message.subject, "résumé")
         self.assertEqual(message.body.strip(), "Hello world.")
 
+    @patch('mail_to_sqlite.providers.gmail.build')
+    def test_get_message_multipart_no_plain_text(self, mock_build):
+        # Arrange
+        mock_service = MagicMock()
+        mock_build.return_value = mock_service
+
+        provider = GmailProvider()
+        provider.service = mock_service
+
+        message_id = "multipart-no-plain-123"
+        html_body_b64 = "PGgxPkhlbGxvPC9oMT48cD5UaGlzIGlzIEhUTUwuPC9wPg=="
+        raw_message = {
+            "id": message_id,
+            "threadId": "thread-html-only",
+            "labelIds": ["INBOX"],
+            "sizeEstimate": 1234,
+            "payload": {
+                "headers": [{"name": "Subject", "value": "HTML Only Email"}],
+                "mimeType": "multipart/alternative",
+                "parts": [
+                    {
+                        "partId": "0",
+                        "mimeType": "text/html",
+                        "body": {"size": 43, "data": html_body_b64}
+                    }
+                ]
+            }
+        }
+        mock_service.users().messages().get().execute.return_value = raw_message
+        mock_service.users().labels().list().execute.return_value = {
+            "labels": [{"id": "INBOX", "name": "INBOX"}]
+        }
+
+        # Act
+        message = provider.get_message(message_id)
+
+        # Assert
+        self.assertEqual(message.body.strip(), "Hello\nThis is HTML.")
+
+    @patch('mail_to_sqlite.providers.gmail.build')
+    def test_get_message_no_body(self, mock_build):
+        # Arrange
+        mock_service = MagicMock()
+        mock_build.return_value = mock_service
+
+        provider = GmailProvider()
+        provider.service = mock_service
+
+        message_id = "no-body-123"
+        raw_message = {
+            "id": message_id,
+            "threadId": "thread-no-body",
+            "labelIds": ["INBOX"],
+            "sizeEstimate": 512,
+            "payload": {
+                "headers": [{"name": "Subject", "value": "No Body Email"}]
+                # No body or parts
+            }
+        }
+        mock_service.users().messages().get().execute.return_value = raw_message
+        mock_service.users().labels().list().execute.return_value = {
+            "labels": [{"id": "INBOX", "name": "INBOX"}]
+        }
+
+        # Act
+        message = provider.get_message(message_id)
+
+        # Assert
+        self.assertEqual(message.body.strip(), "")
+
+    @patch('mail_to_sqlite.auth.get_gmail_credentials', side_effect=ValueError("Authentication failed"))
+    def test_authentication_failure(self, mock_get_credentials):
+        # Arrange
+        provider = GmailProvider()
+
+        # Act & Assert
+        with self.assertRaises(ValueError) as context:
+            provider.authenticate(data_dir="/fake/dir")
+        
+        self.assertIn("Authentication failed", str(context.exception))
+        mock_get_credentials.assert_called_once_with("/fake/dir")
+
+    @patch('mail_to_sqlite.providers.gmail.build')
+    def test_get_message_api_error(self, mock_build):
+        # Arrange
+        mock_service = MagicMock()
+        mock_build.return_value = mock_service
+        
+        provider = GmailProvider()
+        provider.service = mock_service
+
+        # a mock response object.
+        mock_resp = MagicMock()
+        mock_resp.status = 404
+        mock_resp.reason = "Not Found"
+
+        # Simulate an API error (e.g., 404 Not Found)
+        mock_service.users().messages().get.side_effect = HttpError(
+            resp=mock_resp,
+            content=b'Error content'
+        )
+
+        # Act & Assert
+        with self.assertRaises(ValueError) as context:
+            provider.get_message("non-existent-id")
+        
+        self.assertIn("API error fetching message", str(context.exception))
 
 if __name__ == '__main__':
     unittest.main()

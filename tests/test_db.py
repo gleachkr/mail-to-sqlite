@@ -77,3 +77,35 @@ def test_save_attachment_updates_on_duplicate(memory_db):
     
     assert saved_attachment.content == b'New updated content!'
     assert saved_attachment.size == len(b'New updated content!')
+
+def test_create_message_with_clobber(memory_db):
+    """
+    Verify that create_message with --clobber updates only specified fields.
+    """
+    # 1. Arrange: Create an initial message record.
+    initial_data = SAMPLE_MESSAGE_DATA.copy()
+    db.create_message(type('Message', (), initial_data))
+
+    # 2. Act: Create a new message object with the same ID but different data
+    #    and specify which fields to "clobber" (overwrite).
+    updated_data = initial_data.copy()
+    updated_data['is_read'] = True
+    updated_data['labels'] = ['INBOX', 'PROCESSED']
+    updated_data['subject'] = 'This Subject Should NOT Be Updated'
+
+    # The 'clobber' parameter should instruct the function to only update
+    # 'is_read' and 'labels' from the new object.
+    db.create_message(type('Message', (), updated_data), clobber=['is_read', 'labels'])
+
+    # 3. Assert: Retrieve the message and check the fields.
+    saved_message = db.Message.get(db.Message.message_id == 'test-message-123')
+
+    # These fields should have been updated.
+    assert saved_message.is_read is True
+    assert saved_message.labels == ['INBOX', 'PROCESSED']
+
+    # This field should NOT have been updated because it wasn't in clobber.
+    assert saved_message.subject == 'Test Subject'
+
+    # The timestamp should also remain unchanged.
+    assert saved_message.timestamp == datetime(2023, 10, 27, 10, 0, 0)

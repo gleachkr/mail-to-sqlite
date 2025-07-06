@@ -117,7 +117,6 @@ def test_parse_message_uses_existing_message_id():
 def test_parse_message_generates_uuid_if_message_id_is_missing(mocker):
     """
     Verify _parse_imap_message generates a UUID if the Message-ID header is missing.
-    This test will fail until the implementation is updated.
     """
     from mail_to_sqlite.providers.imap import IMAPProvider
     import email
