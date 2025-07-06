@@ -70,7 +70,7 @@ class Attachment(Model):
     class Meta:
         database = database_proxy
         db_table = "attachments"
-        indexes = (("message_id", "filename"), True)
+        indexes = ((("message_id", "filename"), True),)
 
 def init(data_dir: str, enable_logging=False) -> SqliteDatabase:
     """
@@ -245,4 +245,12 @@ def save_attachment(
         content=attachment["content"],
         size=attachment["size"],
         last_indexed=last_indexed
+    ).on_conflict(
+        conflict_target=[Attachment.message_id, Attachment.filename],
+        preserve=[
+            Attachment.content_type,
+            Attachment.content,
+            Attachment.size,
+            Attachment.last_indexed
+        ]
     ).execute()
