@@ -46,7 +46,7 @@ class Message(Model):
 
     class Meta:
         database = database_proxy
-        db_table = "messages"
+        table_name = "messages"
 
 class Attachment(Model):
     """
@@ -59,7 +59,7 @@ class Attachment(Model):
     last_indexed (DateTimeField): Capture timestamp
     """
     message_id = ForeignKeyField(
-        Message, to_field='message_id', backref='attachments',
+        Message, field='message_id', backref='attachments',
         on_delete='CASCADE', column_name='message_id'
     )
     filename = TextField()
@@ -69,7 +69,7 @@ class Attachment(Model):
     last_indexed = DateTimeField()
     class Meta:
         database = database_proxy
-        db_table = "attachments"
+        table_name = "attachments"
         indexes = ((("message_id", "filename"), True),)
 
 def init(data_dir: str, enable_logging=False) -> SqliteDatabase:
