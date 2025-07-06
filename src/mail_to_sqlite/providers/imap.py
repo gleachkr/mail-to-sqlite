@@ -21,7 +21,10 @@ class IMAPProvider(EmailProvider):
         credentials = auth.get_imap_credentials(data_dir)
         
         self.username = credentials['username']
-        self.conn = imaplib.IMAP4_SSL(credentials['server'])
+        if credentials['insecure']:
+            self.conn = imaplib.IMAP4(credentials['server'])
+        else:
+            self.conn = imaplib.IMAP4_SSL(credentials['server'])
         self.conn.login(credentials['username'], credentials['password'])
     
     def get_labels(self) -> Dict[str, str]:
@@ -37,7 +40,7 @@ class IMAPProvider(EmailProvider):
                     labels[folder_name] = folder_name
         return labels
     
-    def _parse_imap_message(self, raw_msg, labels) -> Message:
+    def _parse_imap_message(self, raw_msg, labels, flags=()) -> Message:
         """Parse an IMAP message into our Message format."""
         msg_obj = Message()
         
@@ -99,7 +102,7 @@ class IMAPProvider(EmailProvider):
         msg_obj.labels = list(labels.values())
         
         # Read status and outgoing
-        msg_obj.is_read = True  # Default to true unless we can determine otherwise
+        msg_obj.is_read = b'\\Seen' in flags
         msg_obj.is_outgoing = from_email == self.username
 
         msg_obj.attachments = []
@@ -133,10 +136,19 @@ class IMAPProvider(EmailProvider):
                 # Get the first matching message
                 msg_nums = data[0].split()
                 if msg_nums:
-                    typ, msg_data = self.conn.fetch(msg_nums[0], '(RFC822)')
+                    typ, msg_data = self.conn.fetch(msg_nums[0], '(FLAGS RFC822)')
                     if typ == 'OK':
+                        metadata = msg_data[0][0]
                         raw_msg = msg_data[0][1]
-                        return self._parse_imap_message(raw_msg, {folder_name: folder_name})
+
+                        flags = ()
+                        match = re.search(br'FLAGS \((.*?)\)', metadata)
+                        if match:
+                            flags = match.group(1).split()
+                        
+                        return self._parse_imap_message(
+                            raw_msg, {folder_name: folder_name}, flags
+                        )
         
         raise ValueError(f"Message with ID {message_id} not found")
 
