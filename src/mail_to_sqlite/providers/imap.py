@@ -86,6 +86,15 @@ class IMAPProvider(EmailProvider):
         if 'Bcc' in email_message:
             msg_obj.recipients['bcc'] = msg_obj.parse_addresses(email_message['Bcc'])
         
+        # In-Reply-To and References
+        in_reply_to = email_message.get('In-Reply-To')
+        if in_reply_to:
+            msg_obj.in_reply_to = in_reply_to.strip('<>')
+
+        references = email_message.get('References')
+        if references:
+            msg_obj.references = [ref.strip('<>') for ref in references.split()]
+        
         # Subject
         msg_obj.subject = self._decode_header(email_message.get('Subject', ''))
         

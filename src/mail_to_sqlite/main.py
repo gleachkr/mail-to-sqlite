@@ -24,34 +24,67 @@ def prepare_data_dir(data_dir: str) -> None:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # Sync all messages
+    parser_sync = subparsers.add_parser("sync", help="Sync all messages")
+    parser_sync.add_argument(
         "--data-dir", help="The path where the data should be stored", required=True
     )
-    parser.add_argument(
-        "--provider", 
+    parser_sync.add_argument(
+        "--provider",
         help="Email provider to use (gmail or imap)",
         default="gmail",
-        choices=["gmail", "imap"]
+        choices=["gmail", "imap"],
     )
-    parser.add_argument(
+    parser_sync.add_argument(
         "--full-sync",
         help="Force a full sync of all messages",
         action="store_true",
     )
-    parser.add_argument(
-        "--message-id",
-        help="The ID of a single message to sync",
-    )
-    parser.add_argument(
+    parser_sync.add_argument(
         "--clobber",
         help=(
             "attributes to clobber. Options: "
             "thread_id, sender, recipients, subject, body, size, timestamp, "
             "is_outgoing, is_read, labels"
         ),
-        nargs="*"
+        nargs="*",
     )
-    parser.add_argument(
+    parser_sync.add_argument(
+        "--download-attachments",
+        help="Download and store email attachments",
+        action="store_true",
+    )
+
+    # Sync a single message
+    parser_sync_message = subparsers.add_parser(
+        "sync-message", help="Sync a single message"
+    )
+    parser_sync_message.add_argument(
+        "--data-dir", help="The path where the data should be stored", required=True
+    )
+    parser_sync_message.add_argument(
+        "--provider",
+        help="Email provider to use (gmail or imap)",
+        default="gmail",
+        choices=["gmail", "imap"],
+    )
+    parser_sync_message.add_argument(
+        "--message-id",
+        help="The ID of a single message to sync",
+        required=True,
+    )
+    parser_sync_message.add_argument(
+        "--clobber",
+        help=(
+            "attributes to clobber. Options: "
+            "thread_id, sender, recipients, subject, body, size, timestamp, "
+            "is_outgoing, is_read, labels"
+        ),
+        nargs="*",
+    )
+    parser_sync_message.add_argument(
         "--download-attachments",
         help="Download and store email attachments",
         action="store_true",
@@ -63,7 +96,7 @@ def main():
     db_conn = db.init(args.data_dir)
 
     try:
-        if args.message_id is None:
+        if args.command == "sync":
             sync.all_messages(
                 args.provider,
                 args.data_dir,
@@ -71,7 +104,7 @@ def main():
                 clobber=args.clobber or [],
                 download_attachments=args.download_attachments,
             )
-        else:
+        elif args.command == "sync-message":
             sync.single_message(
                 args.provider,
                 args.data_dir,

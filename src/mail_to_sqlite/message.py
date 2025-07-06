@@ -6,6 +6,8 @@ from bs4 import BeautifulSoup
 class ParsedMessage:
     def __init__(self):
         self.id = None
+        self.in_reply_to = None
+        self.references = []
         self.thread_id = None
         self.sender = {}
         self.recipients = {}
