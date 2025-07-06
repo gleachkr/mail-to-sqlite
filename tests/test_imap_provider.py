@@ -1,3 +1,44 @@
+
+def test_parse_message_preserves_malformed_message_id():
+    """
+    Verify that a malformed Message-ID (e.g., just '<' or '>') is preserved
+    and not replaced by a UUID.
+    """
+    from mail_to_sqlite.providers.imap import IMAPProvider
+    provider = IMAPProvider()
+
+    # Case 1: Message-ID is just ">"
+    raw_email_malformed_1 = b"""From: sender@example.com
+To: receiver@example.com
+Subject: Malformed ID 1
+Message-ID: >
+
+Body.
+"""
+    message_1 = provider._parse_imap_message(raw_email_malformed_1, labels={'INBOX': 'INBOX'})
+    assert message_1.id == '>'
+
+    # Case 2: Message-ID is just "<"
+    raw_email_malformed_2 = b"""From: sender@example.com
+To: receiver@example.com
+Subject: Malformed ID 2
+Message-ID: <
+
+Body.
+"""
+    message_2 = provider._parse_imap_message(raw_email_malformed_2, labels={'INBOX': 'INBOX'})
+    assert message_2.id == '<'
+
+    # Case 3: Message-ID has only one bracket
+    raw_email_malformed_3 = b"""From: sender@example.com
+To: receiver@example.com
+Subject: Malformed ID 3
+Message-ID: <unclosed.id@example.com
+
+Body.
+"""
+    message_3 = provider._parse_imap_message(raw_email_malformed_3, labels={'INBOX': 'INBOX'})
+    assert message_3.id == '<unclosed.id@example.com'
 import pytest
 from unittest.mock import MagicMock
 import re

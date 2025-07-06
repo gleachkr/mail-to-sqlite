@@ -29,21 +29,27 @@ def get_gmail_credentials(data_dir: str) -> google.oauth2.credentials.Credential
         raise ValueError(f"{OAUTH2_CREDENTIALS} not found in {data_dir}")
 
     creds = None
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
     if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, GMAIL_SCOPES)
-    # If there are no (valid) credentials available, let the user log in.
+        try:
+            creds = Credentials.from_authorized_user_file(token_path, GMAIL_SCOPES)
+        except ValueError:
+            # Token is corrupt, let the flow re-run
+            pass
+
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                credential_path, GMAIL_SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
+            try:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    credential_path, GMAIL_SCOPES
+                )
+                creds = flow.run_local_server(port=0)
+            except ValueError:
+                raise ValueError(
+                    f"Your '{OAUTH2_CREDENTIALS}' file is not a valid OAuth2 "
+                    "credentials file."
+                )
         with open(token_path, "w") as token:
             token.write(creds.to_json())
 
@@ -65,5 +71,20 @@ def get_imap_credentials(data_dir: str) -> dict:
     if not os.path.exists(credential_path):
         raise ValueError(f"{IMAP_CREDENTIALS} not found in {data_dir}")
     
-    with open(credential_path, 'r') as f:
-        return json.load(f)
+    try:
+        with open(credential_path, 'r') as f:
+            credentials = json.load(f)
+    except json.JSONDecodeError:
+        raise ValueError(
+            f"Your '{IMAP_CREDENTIALS}' file is not a valid JSON file."
+        )
+
+    required_keys = {"server", "username", "password"}
+    missing_keys = required_keys - set(credentials.keys())
+    if missing_keys:
+        raise ValueError(
+            f"Your '{IMAP_CREDENTIALS}' file is missing the following "
+            f"required keys: {', '.join(missing_keys)}"
+        )
+        
+    return credentials

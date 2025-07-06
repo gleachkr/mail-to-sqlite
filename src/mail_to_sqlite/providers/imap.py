@@ -60,7 +60,12 @@ class IMAPProvider(EmailProvider):
         email_message = email.message_from_bytes(raw_msg)
         
         # Extract headers
-        msg_obj.id = email_message.get('Message-ID', '').strip('<>')
+        raw_id = email_message.get('Message-ID', '')
+        if raw_id.startswith('<') and raw_id.endswith('>'):
+            msg_obj.id = raw_id[1:-1]
+        else:
+            msg_obj.id = raw_id
+
         if not msg_obj.id:
             # Create a synthetic ID if none exists
             msg_obj.id = str(uuid.uuid4())

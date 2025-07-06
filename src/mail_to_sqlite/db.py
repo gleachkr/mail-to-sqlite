@@ -229,28 +229,32 @@ def save_attachment(
 ):
     """
     Saves an attachment into the database. If a row with the same
-    message_id and filename exists, updates its content and metadata.
+    message_id and filename exists, it de-duplicates the filename.
 
     Args:
         an attachment (dict): Dict of attachment  .
         last_indexed (datetime, optional): The time of saving. Defaults to now.
     """
+    import os
     if last_indexed is None:
         from datetime import datetime
         last_indexed = datetime.now()
-    Attachment.insert(
+    
+    base, ext = os.path.splitext(attachment["filename"])
+    filename = attachment["filename"]
+    counter = 1
+    while Attachment.select().where(
+        (Attachment.message_id == attachment["message_id"]) &
+        (Attachment.filename == filename)
+    ).exists():
+        filename = f"{base}({counter}){ext}"
+        counter += 1
+
+    Attachment.create(
         message_id=attachment["message_id"],
-        filename=attachment["filename"],
+        filename=filename,
         content_type=attachment["content_type"],
         content=attachment["content"],
         size=attachment["size"],
         last_indexed=last_indexed
-    ).on_conflict(
-        conflict_target=[Attachment.message_id, Attachment.filename],
-        preserve=[
-            Attachment.content_type,
-            Attachment.content,
-            Attachment.size,
-            Attachment.last_indexed
-        ]
-    ).execute()
+    )

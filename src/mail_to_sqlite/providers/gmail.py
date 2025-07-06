@@ -78,7 +78,11 @@ class GmailProvider(EmailProvider):
             elif name == "subject":
                 m.subject = self._decode_header(value)
             elif name == "date":
-                m.timestamp = parsedate_to_datetime(value)
+                try:
+                    m.timestamp = parsedate_to_datetime(value)
+                except Exception as e:
+                    print(f"Warning: Could not parse date '{value}': {e}")
+                    m.timestamp = datetime.now()
 
         # Labels
         if "labelIds" in msg:

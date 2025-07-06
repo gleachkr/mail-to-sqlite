@@ -1,3 +1,4 @@
+from datetime import datetime
 import unittest
 from unittest.mock import MagicMock, patch
 from mail_to_sqlite.providers.gmail import GmailProvider
@@ -332,6 +333,40 @@ class TestGmailProvider(unittest.TestCase):
             provider.get_message("non-existent-id")
         
         self.assertIn("API error fetching message", str(context.exception))
+
+    @patch('mail_to_sqlite.providers.gmail.build')
+    def test_get_message_with_malformed_date(self, mock_build):
+        # Arrange
+        mock_service = MagicMock()
+        mock_build.return_value = mock_service
+
+        provider = GmailProvider()
+        provider.service = mock_service
+
+        message_id = "malformed-date-789"
+        raw_message = {
+            "id": message_id,
+            "threadId": "thread-malformed-date",
+            "labelIds": ["INBOX"],
+            "sizeEstimate": 1024,
+            "payload": {
+                "headers": [
+                    {"name": "Date", "value": "This is not a valid date"},
+                    {"name": "Subject", "value": "Malformed Date Test"}
+                ]
+            }
+        }
+        mock_service.users().messages().get().execute.return_value = raw_message
+        mock_service.users().labels().list().execute.return_value = {
+            "labels": [{"id": "INBOX", "name": "INBOX"}]
+        }
+
+        # Act
+        message = provider.get_message(message_id)
+
+        # Assert
+        self.assertIsNotNone(message.timestamp)
+        self.assertIsInstance(message.timestamp, datetime)
 
 if __name__ == '__main__':
     unittest.main()

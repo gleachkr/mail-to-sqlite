@@ -38,15 +38,7 @@ def process_attachments(provider, provider_type: str, msg):
         msg (Message): The message containing attachments
     """
     for idx, attachment in enumerate(msg.attachments):
-
-
         try:
-            if db.attachment_exists(msg.id, attachment["filename"]):
-                print(
-                    f"  Attachment already exists: {attachment['filename']}"
-                )
-                continue
-
             # Gmail: fetch content separately
             if (
                 provider_type == "gmail"

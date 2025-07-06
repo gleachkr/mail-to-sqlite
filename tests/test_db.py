@@ -1,3 +1,34 @@
+def test_save_attachment_deduplicates_filenames(memory_db):
+    """
+    Verify that saving two attachments with the same filename for the same
+    message results in de-duplicated filenames in the database.
+    """
+    # 1. Arrange: Create a parent message
+    db.create_message(type('Message', (), SAMPLE_MESSAGE_DATA))
+
+    # 2. Act: Save two attachments with the same filename but different content
+    attachment_1 = SAMPLE_ATTACHMENT_DATA.copy()
+    attachment_1['content'] = b'This is the first attachment.'
+    db.save_attachment(attachment_1)
+
+    attachment_2 = SAMPLE_ATTACHMENT_DATA.copy()
+    attachment_2['content'] = b'This is the second attachment.'
+    db.save_attachment(attachment_2)
+
+    # 3. Assert: Check that both attachments were saved with new names
+    saved_attachments = db.Attachment.select().where(
+        db.Attachment.message_id == 'test-message-123'
+    ).order_by(db.Attachment.id)
+
+    assert saved_attachments.count() == 2
+    
+    # The first one should have its original name
+    assert saved_attachments[0].filename == 'test_attachment.txt'
+    assert saved_attachments[0].content == b'This is the first attachment.'
+
+    # The second one should have a de-duplicated name, e.g., "test_attachment(1).txt"
+    assert saved_attachments[1].filename == 'test_attachment(1).txt'
+    assert saved_attachments[1].content == b'This is the second attachment.'
 import pytest
 from peewee import IntegrityError
 from mail_to_sqlite import db
@@ -54,8 +85,7 @@ def memory_db():
 def test_save_attachment_updates_on_duplicate(memory_db):
     """
     Verifies that calling save_attachment twice for the same attachment
-    updates the existing record rather than raising an error, as per the
-    docstring's description.
+    with different content results in a new, de-duplicated attachment.
     """
     # 1. Arrange: Create a parent message and save the attachment once.
     db.create_message(type('Message', (), SAMPLE_MESSAGE_DATA))
@@ -66,17 +96,17 @@ def test_save_attachment_updates_on_duplicate(memory_db):
     updated_attachment_data['content'] = b'New updated content!'
     updated_attachment_data['size'] = len(updated_attachment_data['content'])
     
-    # This call should now update, not raise an IntegrityError.
     db.save_attachment(updated_attachment_data)
 
-    # 3. Assert: Retrieve the record and check that its content was updated.
-    saved_attachment = db.Attachment.get(
-        (db.Attachment.message_id == 'test-message-123') &
-        (db.Attachment.filename == 'test_attachment.txt')
-    )
-    
-    assert saved_attachment.content == b'New updated content!'
-    assert saved_attachment.size == len(b'New updated content!')
+    # 3. Assert: Retrieve the records and check that there are two.
+    saved_attachments = db.Attachment.select().where(
+        db.Attachment.message_id == 'test-message-123'
+    ).order_by(db.Attachment.id)
+
+    assert saved_attachments.count() == 2
+    assert saved_attachments[0].content == SAMPLE_ATTACHMENT_DATA['content']
+    assert saved_attachments[1].content == updated_attachment_data['content']
+    assert saved_attachments[1].filename == 'test_attachment(1).txt'
 
 def test_create_message_with_clobber(memory_db):
     """
