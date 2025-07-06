@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from email.header import decode_header
 from email.utils import parseaddr, parsedate_to_datetime
@@ -32,8 +33,11 @@ class GmailProvider(EmailProvider):
     def get_message(self, message_id: str) -> ParsedMessage:
         """Get a single message by ID."""
         labels = self.get_labels()
-        raw_msg = self.service.users().messages().get(
-            userId="me", id=message_id).execute()
+        try:
+            raw_msg = self.service.users().messages().get(
+                userId="me", id=message_id).execute()
+        except HttpError as e:
+            raise ValueError(f"API error fetching message: {e}")
         return self._parse_gmail_message(raw_msg, labels)
 
     def _parse_gmail_message(self, raw: dict, labels: dict) -> ParsedMessage:
