@@ -167,7 +167,7 @@ class IMAPProvider(EmailProvider):
                             raw_msg, {folder_name: folder_name}, flags
                         )
         
-        raise ValueError(f"Message with ID {message_id} not found")
+        return None
 
     def _list_messages_in_folder(self, folder_name: str, query: List[str], 
                                start_idx: int = 1, max_results: int = 500) -> Dict:

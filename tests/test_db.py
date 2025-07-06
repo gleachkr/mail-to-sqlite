@@ -1,3 +1,26 @@
+def test_save_attachment_deduplicates_multiple_times(memory_db):
+    """
+    Verify that saving the same filename multiple times results in
+    correctly numbered, de-duplicated filenames.
+    """
+    # 1. Arrange: Create a parent message
+    db.create_message(type('Message', (), SAMPLE_MESSAGE_DATA))
+
+    # 2. Act: Save an attachment with the same name three times.
+    db.save_attachment(SAMPLE_ATTACHMENT_DATA) # test_attachment.txt
+    db.save_attachment(SAMPLE_ATTACHMENT_DATA) # test_attachment(1).txt
+    db.save_attachment(SAMPLE_ATTACHMENT_DATA) # test_attachment(2).txt
+
+    # 3. Assert: Check the filenames
+    saved_attachments = db.Attachment.select().where(
+        db.Attachment.message_id == 'test-message-123'
+    ).order_by(db.Attachment.id)
+
+    assert saved_attachments.count() == 3
+    assert saved_attachments[0].filename == 'test_attachment.txt'
+    assert saved_attachments[1].filename == 'test_attachment(1).txt'
+    assert saved_attachments[2].filename == 'test_attachment(2).txt'
+
 def test_save_attachment_deduplicates_filenames(memory_db):
     """
     Verify that saving two attachments with the same filename for the same

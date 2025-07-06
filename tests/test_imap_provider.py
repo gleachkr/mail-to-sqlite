@@ -1,3 +1,22 @@
+def test_get_message_handles_no_search_results(mock_imap_conn):
+    """
+    Verify that get_message returns None when the IMAP search finds no messages.
+    """
+    # Arrange
+    # Configure the mock to return an empty list of message numbers
+    mock_imap_conn.search.return_value = ('OK', [b''])
+    mock_imap_conn.list.return_value = ('OK', [b'(\\HasNoChildren) "/" "INBOX"'])
+
+    # Act
+    from mail_to_sqlite.providers.imap import IMAPProvider
+    provider = IMAPProvider()
+    provider.authenticate(data_dir='/fake/dir')
+    message = provider.get_message(message_id="<non-existent-id@example.com>")
+
+    # Assert
+    assert message is None
+    # Ensure fetch was not called since no message was found
+    mock_imap_conn.fetch.assert_not_called()
 
 def test_parse_message_preserves_malformed_message_id():
     """
