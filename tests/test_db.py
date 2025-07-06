@@ -37,7 +37,7 @@ def memory_db():
     """
     # Create a fresh, in-memory SQLite database for the test.
     # Using SqliteExtDatabase is a good practice as it supports more features.
-    in_memory_db = db.SqliteExtDatabase(':memory:')
+    in_memory_db = db.SqliteExtDatabase(':memory:', pragmas={'foreign_keys': 1})
     
     # Configure the global database proxy to use our in-memory database.
     db.database_proxy.initialize(in_memory_db)
@@ -109,3 +109,41 @@ def test_create_message_with_clobber(memory_db):
 
     # The timestamp should also remain unchanged.
     assert saved_message.timestamp == datetime(2023, 10, 27, 10, 0, 0)
+
+def test_create_message_updates_last_indexed_on_duplicate_no_clobber(memory_db):
+    """
+    Verify that creating a duplicate message without clobbering only
+    updates the 'last_indexed' field.
+    """
+    # 1. Arrange: Create the initial message.
+    initial_data = SAMPLE_MESSAGE_DATA.copy()
+    initial_message = type('Message', (), initial_data)
+    db.create_message(initial_message)
+    first_saved_message = db.Message.get(db.Message.message_id == initial_data['id'])
+    original_last_indexed = first_saved_message.last_indexed
+
+    # 2. Act: Create a new message object with the same ID but different data.
+    # We do *not* provide a clobber list.
+    updated_data = initial_data.copy()
+    updated_data['subject'] = "This Subject Should NOT Be Updated"
+    updated_message = type('Message', (), updated_data)
+    db.create_message(updated_message)
+
+    # 3. Assert: Retrieve the message and check its fields.
+    final_saved_message = db.Message.get(db.Message.message_id == initial_data['id'])
+
+    # The subject should NOT have changed.
+    assert final_saved_message.subject == initial_data['subject']
+
+    # The last_indexed timestamp SHOULD have changed.
+    assert final_saved_message.last_indexed > original_last_indexed
+
+def test_save_attachment_fails_without_parent_message(memory_db):
+    """
+    Verify that saving an attachment fails with an IntegrityError
+    if the parent message does not exist.
+    """
+    # Act & Assert: Attempt to save an attachment for a message that
+    # hasn't been created. This should violate the foreign key constraint.
+    with pytest.raises(IntegrityError):
+        db.save_attachment(SAMPLE_ATTACHMENT_DATA)
