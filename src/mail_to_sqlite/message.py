@@ -1,6 +1,5 @@
 import base64
-from email.utils import parseaddr, parsedate_to_datetime
-
+from email.utils import getaddresses
 from bs4 import BeautifulSoup
 
 
@@ -21,19 +20,17 @@ class Message:
 
     def parse_addresses(self, addresses: str) -> list:
         """
-        Parse a list of email addresses.
+        Parse a string of one or more email addresses.
 
         Args:
             addresses (str): The list of email addresses to parse.
         Returns:
             list: The parsed email addresses.
         """
-        parsed_addresses = []
-        for address in addresses.split(","):
-            name, email = parseaddr(address)
-            if len(email) > 0:
-                parsed_addresses.append({"email": email.lower(), "name": name})
-        return parsed_addresses
+        # getaddresses handles multiple addresses and complex names correctly.
+        # It returns a list of (realname, email_address) tuples.
+        parsed = getaddresses([addresses])
+        return [{"name": name, "email": email.lower()} for name, email in parsed if email]
 
     def decode_body(self, part) -> str:
         """
