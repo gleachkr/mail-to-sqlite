@@ -5,6 +5,19 @@ import sqlite3
 from peewee import *
 from playhouse.sqlite_ext import *
 
+# Deal with a DeprecationWarning from peewee regarding datetime handling
+# See: https://docs.python.org/3/library/sqlite3.html#adapter-and-converter-recipes
+def adapt_datetime_iso(val):
+    """Adapt datetime.datetime to timezone-naive ISO 8601 format."""
+    return val.isoformat()
+
+def convert_datetime_iso(s):
+    """Convert ISO 8601 string to datetime.datetime object."""
+    return datetime.fromisoformat(s.decode())
+
+sqlite3.register_adapter(datetime, adapt_datetime_iso)
+sqlite3.register_converter("datetime", convert_datetime_iso)
+
 class SchemaError(Exception):
     pass
 
@@ -27,7 +40,7 @@ class Message(Model):
     subject = TextField(null=True)
     body = TextField(null=True)
     size = IntegerField()
-    timestamp = DateTimeField()
+    timestamp = DateTimeField(formats=['%Y-%m-%dT%H:%M:%S'])
     is_read = BooleanField()
     is_outgoing = BooleanField()
     last_indexed = DateTimeField()
