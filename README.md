@@ -112,6 +112,74 @@ CREATE TABLE "messages" (
 );
 ```
 
+### Finding Replies
+
+This query helps you find all direct replies to a specific email. This is
+useful for tracing a conversation from a starting point, especially when a
+`thread_id` is not available.
+
+```sql
+SELECT
+    reply.subject,
+    reply.sender->>'$.email' as sender,
+    reply.timestamp
+FROM
+    messages AS original
+JOIN
+    messages AS reply ON original.message_id = reply.in_reply_to_id
+WHERE
+    original.message_id = '<message-id-of-the-original-email>';
+```
+
+### Reconstructing a Thread
+
+If your email provider (like Gmail) supports it, you can list all messages
+that belong to a single conversation using `thread_id`.
+
+```sql
+SELECT
+    subject,
+    sender->>'$.email' as sender,
+    timestamp
+FROM messages
+WHERE thread_id = (
+    SELECT thread_id FROM messages WHERE message_id = '<any-message-id-in-the-thread>'
+)
+ORDER BY timestamp ASC;
+```
+
+### Finding Attachments by Type
+
+This query lets you find all attachments of a specific file type, such as
+PDFs. This is great for locating documents you've been sent.
+
+```sql
+SELECT
+    a.filename,
+    a.size,
+    m.subject,
+    m.sender->>'$.email' as sender
+FROM attachments a
+JOIN messages m ON a.message_id = m.message_id
+WHERE a.content_type = 'application/pdf'
+ORDER BY a.size DESC;
+```
+
+### Attachment Size by Sender
+
+Discover which senders are sending you the most data in attachments.
+
+```sql
+SELECT
+    m.sender->>'$.email' AS sender_email,
+    SUM(a.size) * 1.0 / (1024 * 1024) AS total_mb
+FROM attachments a
+JOIN messages m ON a.message_id = m.message_id
+GROUP BY sender_email
+ORDER BY total_mb DESC
+LIMIT 20;
+```
+
 ### The `message_references` table
 
 This table tracks the reply chain of emails, helping to reconstruct discussion 
