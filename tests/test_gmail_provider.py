@@ -186,6 +186,44 @@ class TestGmailProvider(unittest.TestCase):
         self.assertIsNone(message.timestamp)
         self.assertEqual(message.sender['email'], "sender@example.com")
 
+    @patch('mail_to_sqlite.providers.gmail.build')
+    def test_unicode_handling(self, mock_build):
+        # Arrange
+        mock_service = MagicMock()
+        mock_build.return_value = mock_service
+
+        provider = GmailProvider()
+        provider.service = mock_service
+
+        message_id = "unicode-789"
+        # From: =?utf-8?B?Sm9zw6kgR29uesOhbGV6?= <jose.gonzalez@example.com>
+        # Subject: =?utf-8?B?csOpc3Vtw6k=?= (résumé)
+        raw_message = {
+            "id": message_id,
+            "threadId": "thread-unicode",
+            "labelIds": ["INBOX"],
+            "sizeEstimate": 2048,
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "=?utf-8?B?Sm9zw6kgR29uesOhbGV6?= <jose.gonzalez@example.com>"},
+                    {"name": "Subject", "value": "=?utf-8?B?csOpc3Vtw6k=?="},
+                ],
+                "body": {"size": 100, "data": "SGVsbG8gd29ybGQu"} # "Hello world."
+            }
+        }
+        mock_service.users().messages().get().execute.return_value = raw_message
+        mock_service.users().labels().list().execute.return_value = {
+            "labels": [{"id": "INBOX", "name": "INBOX"}]
+        }
+
+        # Act
+        message = provider.get_message(message_id)
+
+        # Assert
+        self.assertEqual(message.sender['name'], "José González")
+        self.assertEqual(message.subject, "résumé")
+        self.assertEqual(message.body.strip(), "Hello world.")
+
 
 if __name__ == '__main__':
     unittest.main()

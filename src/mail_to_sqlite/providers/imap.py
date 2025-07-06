@@ -1,5 +1,6 @@
 import imaplib
 import email
+from email.header import decode_header
 from email.utils import parseaddr, parsedate_to_datetime
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -41,6 +42,16 @@ class IMAPProvider(EmailProvider):
                     labels[folder_name] = folder_name
         return labels
     
+    def _decode_header(self, header_value):
+        decoded_parts = decode_header(header_value)
+        parts = []
+        for part, encoding in decoded_parts:
+            if isinstance(part, bytes):
+                parts.append(part.decode(encoding or 'utf-8'))
+            else:
+                parts.append(part)
+        return ''.join(parts)
+
     def _parse_imap_message(self, raw_msg, labels, flags=()) -> ParsedMessage:
         """Parse an IMAP message into our Message format."""
         msg_obj = ParsedMessage()
@@ -57,7 +68,7 @@ class IMAPProvider(EmailProvider):
         msg_obj.thread_id = None
         
         # Parse From
-        from_header = email_message.get('From', '')
+        from_header = self._decode_header(email_message.get('From', ''))
         from_name, from_email = parseaddr(from_header)
         msg_obj.sender = {"name": from_name, "email": from_email}
         
@@ -71,7 +82,7 @@ class IMAPProvider(EmailProvider):
             msg_obj.recipients['bcc'] = msg_obj.parse_addresses(email_message['Bcc'])
         
         # Subject
-        msg_obj.subject = email_message.get('Subject', '')
+        msg_obj.subject = self._decode_header(email_message.get('Subject', ''))
         
         # Date
         date_str = email_message.get('Date')

@@ -4,6 +4,7 @@ from datetime import datetime
 
 from googleapiclient.discovery import build
 
+from email.header import decode_header
 from email.utils import parseaddr, parsedate_to_datetime
 from .base import EmailProvider
 from ..message import ParsedMessage
@@ -41,6 +42,16 @@ class GmailProvider(EmailProvider):
         """
         return self._parse_gmail_message_data(raw, labels)
 
+    def _decode_header(self, header_value):
+        decoded_parts = decode_header(header_value)
+        parts = []
+        for part, encoding in decoded_parts:
+            if isinstance(part, bytes):
+                parts.append(part.decode(encoding or 'utf-8'))
+            else:
+                parts.append(part)
+        return ''.join(parts)
+
     def _parse_gmail_message_data(self, msg: dict, labels: dict) -> ParsedMessage:
         m = ParsedMessage()
         m.id = msg["id"]
@@ -51,8 +62,9 @@ class GmailProvider(EmailProvider):
             name = header["name"].lower()
             value = header["value"]
             if name == "from":
-                addr = parseaddr(value)
-                m.sender = {"name": addr[0], "email": addr[1]}
+                name, email = parseaddr(value)
+                decoded_name = self._decode_header(name)
+                m.sender = {"name": decoded_name, "email": email}
             elif name == "to":
                 m.recipients["to"] = m.parse_addresses(value)
             elif name == "cc":
@@ -60,7 +72,7 @@ class GmailProvider(EmailProvider):
             elif name == "bcc":
                 m.recipients["bcc"] = m.parse_addresses(value)
             elif name == "subject":
-                m.subject = value
+                m.subject = self._decode_header(value)
             elif name == "date":
                 m.timestamp = parsedate_to_datetime(value)
 

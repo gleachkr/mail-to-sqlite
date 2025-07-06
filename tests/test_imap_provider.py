@@ -134,3 +134,23 @@ def test_parse_message_generates_uuid_if_message_id_is_missing(mocker):
     assert message.id == 'a-fake-but-valid-uuid'
     mock_uuid.assert_called_once()
 
+
+UNICODE_EMAIL = b"""From: =?utf-8?B?Sm9zw6kgR29uesOhbGV6?= <jose.gonzalez@example.com>
+To: receiver@example.com
+Subject: =?utf-8?B?csOpc3Vtw6k=?=
+Message-ID: <unicode-test-456@example.com>
+
+This is the body.
+"""
+
+def test_unicode_header_decoding():
+    """
+    Verify that RFC 2047 encoded headers are correctly decoded.
+    """
+    from mail_to_sqlite.providers.imap import IMAPProvider
+    provider = IMAPProvider()
+    
+    message = provider._parse_imap_message(UNICODE_EMAIL, labels={'INBOX': 'INBOX'})
+    
+    assert message.sender['name'] == 'José González'
+    assert message.subject == 'résumé'
