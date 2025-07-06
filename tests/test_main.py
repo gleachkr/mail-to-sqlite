@@ -1,4 +1,39 @@
 
+
+
+def test_sigint_graceful_exit(mocker, tmp_path):
+    """
+    Verify that the program handles SIGINT (Ctrl+C) gracefully
+    by closing the database connection before exiting.
+    """
+    # 1. ARRANGE
+    # Mock the sync function to raise a KeyboardInterrupt
+    mocker.patch(
+        "mail_to_sqlite.main.sync.all_messages",
+        side_effect=KeyboardInterrupt
+    )
+
+    # Spy on the database connection's close method
+    mock_db_conn = MagicMock()
+    mocker.patch("mail_to_sqlite.main.db.init", return_value=mock_db_conn)
+
+    data_dir = str(tmp_path)
+    mocker.patch.object(
+        sys, "argv", ["mail_to_sqlite", "--data-dir", data_dir]
+    )
+
+    # 2. ACT & ASSERT
+    # Expect a SystemExit because of the KeyboardInterrupt handling
+    with pytest.raises(SystemExit) as e:
+        main()
+
+    # Assert that the exit code is 0
+    assert e.value.code == 0
+
+    # 3. ASSERT
+    # Verify that the database connection was closed
+    mock_db_conn.close.assert_called_once()
+
 def test_incremental_sync_uses_timestamps(mocker, tmp_path, mock_message_one, mock_message_two):
     """
     Verify that an incremental sync correctly uses the timestamps from the DB

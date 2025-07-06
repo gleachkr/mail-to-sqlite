@@ -62,21 +62,25 @@ def main():
     prepare_data_dir(args.data_dir)
     db_conn = db.init(args.data_dir)
 
-    if args.message_id is None:
-        sync.all_messages(
-            args.provider,
-            args.data_dir,
-            full_sync=args.full_sync,
-            clobber=args.clobber or [],
-            download_attachments=args.download_attachments,
-        )
-    else:
-        sync.single_message(
-            args.provider,
-            args.data_dir,
-            args.message_id,
-            clobber=args.clobber or [],
-            download_attachments=args.download_attachments,
-        )
-
-    db_conn.close()
+    try:
+        if args.message_id is None:
+            sync.all_messages(
+                args.provider,
+                args.data_dir,
+                full_sync=args.full_sync,
+                clobber=args.clobber or [],
+                download_attachments=args.download_attachments,
+            )
+        else:
+            sync.single_message(
+                args.provider,
+                args.data_dir,
+                args.message_id,
+                clobber=args.clobber or [],
+                download_attachments=args.download_attachments,
+            )
+    except KeyboardInterrupt:
+        print("\nExiting gracefully...")
+        sys.exit(0)
+    finally:
+        db_conn.close()
