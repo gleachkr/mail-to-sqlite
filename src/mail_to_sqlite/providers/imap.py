@@ -7,7 +7,7 @@ import re
 import uuid
 
 from .base import EmailProvider
-from ..message import Message
+from ..message import ParsedMessage
 
 class IMAPProvider(EmailProvider):
     """IMAP implementation of the EmailProvider interface."""
@@ -41,9 +41,9 @@ class IMAPProvider(EmailProvider):
                     labels[folder_name] = folder_name
         return labels
     
-    def _parse_imap_message(self, raw_msg, labels, flags=()) -> Message:
+    def _parse_imap_message(self, raw_msg, labels, flags=()) -> ParsedMessage:
         """Parse an IMAP message into our Message format."""
-        msg_obj = Message()
+        msg_obj = ParsedMessage()
         
         # Parse email using the built-in email module
         email_message = email.message_from_bytes(raw_msg)
@@ -124,7 +124,7 @@ class IMAPProvider(EmailProvider):
         
         return msg_obj
     
-    def get_message(self, message_id: str) -> Message:
+    def get_message(self, message_id: str) -> ParsedMessage:
         """Get a single message by ID from IMAP."""
         # In IMAP we need to search for message_id
         labels = self.get_labels()

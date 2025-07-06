@@ -6,7 +6,7 @@ from googleapiclient.discovery import build
 
 from email.utils import parseaddr, parsedate_to_datetime
 from .base import EmailProvider
-from ..message import Message
+from ..message import ParsedMessage
 from .. import auth
 
 class GmailProvider(EmailProvider):
@@ -28,21 +28,21 @@ class GmailProvider(EmailProvider):
             labels[label["id"]] = label["name"]
         return labels
     
-    def get_message(self, message_id: str) -> Message:
+    def get_message(self, message_id: str) -> ParsedMessage:
         """Get a single message by ID."""
         labels = self.get_labels()
         raw_msg = self.service.users().messages().get(
             userId="me", id=message_id).execute()
         return self._parse_gmail_message(raw_msg, labels)
 
-    def _parse_gmail_message(self, raw: dict, labels: dict) -> Message:
+    def _parse_gmail_message(self, raw: dict, labels: dict) -> ParsedMessage:
         """
         Parse a Gmail raw API message dict to a Message class instance.
         """
         return self._parse_gmail_message_data(raw, labels)
 
-    def _parse_gmail_message_data(self, msg: dict, labels: dict) -> Message:
-        m = Message()
+    def _parse_gmail_message_data(self, msg: dict, labels: dict) -> ParsedMessage:
+        m = ParsedMessage()
         m.id = msg["id"]
         m.thread_id = msg["threadId"]
         m.size = msg["sizeEstimate"]
@@ -72,26 +72,7 @@ class GmailProvider(EmailProvider):
             m.is_outgoing = "SENT" in msg["labelIds"]
 
         # Extract body
-        m.body = None
-        if "body" in msg["payload"]:
-            if "data" in msg["payload"]["body"]:
-                m.body = base64.urlsafe_b64decode(
-                    msg["payload"]["body"]["data"]
-                ).decode("utf-8")
-                m.body = m.html2text(m.body)
-
-        if "parts" in msg["payload"] and m.body is None:
-            for part in msg["payload"]["parts"]:
-                if (
-                    part["mimeType"] == "text/html"
-                    or part["mimeType"] == "text/plain"
-                    or part["mimeType"] == "multipart/related"
-                    or part["mimeType"] == "multipart/alternative"
-                ):
-                    m.body = m.decode_body(part)
-                    m.body = m.html2text(m.body)
-                    if len(m.body) > 0:
-                        break
+        m.body = m.decode_body(msg["payload"])
 
         # Extract attachments
         m.attachments = []
@@ -99,7 +80,7 @@ class GmailProvider(EmailProvider):
             self._extract_gmail_attachments(msg["payload"], m)
         return m
 
-    def _extract_gmail_attachments(self, part, m: Message):
+    def _extract_gmail_attachments(self, part, m: ParsedMessage):
         """
         Recursively extract attachment metadata from Gmail message parts.
         """

@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 from datetime import datetime
 
-from ..message import Message
+from ..message import ParsedMessage
 
 class EmailProvider(ABC):
     """Abstract base class for email providers."""
@@ -18,7 +18,7 @@ class EmailProvider(ABC):
         pass
     
     @abstractmethod
-    def get_message(self, message_id: str) -> Message:
+    def get_message(self, message_id: str) -> ParsedMessage:
         """Get a single message by ID."""
         pass
     

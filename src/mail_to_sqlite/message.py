@@ -3,7 +3,7 @@ from email.utils import getaddresses
 from bs4 import BeautifulSoup
 
 
-class Message:
+class ParsedMessage:
     def __init__(self):
         self.id = None
         self.thread_id = None
@@ -41,10 +41,26 @@ class Message:
         Returns:
             str: The decoded body of the message part.
         """
-        if "data" in part["body"]:
+        if part.get("mimeType") == "multipart/alternative":
+            # Prioritize plain text over HTML
+            plain_text_part = None
+            html_part = None
+            for subpart in part.get("parts", []):
+                if subpart.get("mimeType") == "text/plain":
+                    plain_text_part = subpart
+                elif subpart.get("mimeType") == "text/html":
+                    html_part = subpart
+
+            if plain_text_part and "data" in plain_text_part.get("body", {}):
+                return base64.urlsafe_b64decode(plain_text_part["body"]["data"]).decode("utf-8")
+            elif html_part and "data" in html_part.get("body", {}):
+                html_content = base64.urlsafe_b64decode(html_part["body"]["data"]).decode("utf-8")
+                return self.html2text(html_content)
+
+        if "data" in part.get("body", {}):
             return base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
         elif "parts" in part:
-            for subpart in part["parts"]:
+            for subpart in part.get("parts", []):
                 decoded_body = self.decode_body(subpart)
                 if decoded_body:
                     return decoded_body
@@ -60,4 +76,4 @@ class Message:
             str: The converted HTML.
         """
         soup = BeautifulSoup(html, features="html.parser")
-        return soup.get_text()
+        return soup.get_text(separator='\n')
