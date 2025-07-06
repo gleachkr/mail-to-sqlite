@@ -46,13 +46,13 @@ the `--data-dir` that you pass to the program.
 ### Basic Command Structure
 
 ```
-mail_to_sqlite COMMAND [OPTIONS]
+mail_to_sqlite {sync,sync-message} [OPTIONS]
 ```
 
 ### Syncing All Messages
 
 ```
-mail_to_sqlite --data-dir PATH/TO/DATA --provider [gmail|imap]
+mail_to_sqlite sync --data-dir PATH/TO/DATA --provider [gmail|imap]
 ```
 
 This creates and updates a SQLite database at `PATH/TO/DATA/messages.db`. On 
@@ -69,41 +69,80 @@ mail_to_sqlite sync-message --data-dir PATH/TO/DATA --message-id MESSAGE_ID
 ### Command-line Parameters
 
 ```
-usage: mail_to_sqlite [-h] --data-dir DATA_DIR [--full-sync] 
-                      [--message-id MESSAGE_ID] [--clobber [ATTR ...]]
-                      [--provider {gmail,imap}]
-
-positional arguments:
-  command                The command to run: {sync, sync-message}
+usage: mail_to_sqlite [-h] {sync,sync-message} ...
 
 options:
   -h, --help                Show this help message and exit
   --data-dir DATA_DIR       Directory where data should be stored
   --full-sync               Force a full sync of all messages
   --message-id MESSAGE_ID   The ID of the message to sync
-  --clobber [ATTR ...]      Attributes to overwrite on existing messages
+  --clobber [ATTR ...]      Attributes to overwrite on existing messages. 
+                            Options: thread_id, sender, recipients, subject, 
+                            body, size, timestamp, is_outgoing, is_read, labels
   --provider {gmail,imap}   Email provider to use (default: gmail)
+  --download-attachments    Download and store email attachments
 ```
 
 ## Database Schema
 
+The database consists of three tables: `messages`, `message_references`, and 
+`attachments`.
+
+### The `messages` table
+
+This is the core table, storing all email metadata.
+
 ```sql
-CREATE TABLE IF NOT EXISTS "messages" (
-    "id" INTEGER NOT NULL PRIMARY KEY, 
-    "message_id" TEXT NOT NULL,
-    "thread_id" TEXT NOT NULL,
-    "sender" JSON NOT NULL, 
+CREATE TABLE "messages" (
+    "id" INTEGER NOT NULL PRIMARY KEY,
+    "message_id" TEXT NOT NULL UNIQUE,
+    "thread_id" TEXT,
+    "sender" JSON NOT NULL,
     "recipients" JSON NOT NULL,
     "labels" JSON NOT NULL,
-    "subject" TEXT NOT NULL,
-    "body" TEXT NOT NULL,
+    "subject" TEXT,
+    "body" TEXT,
     "size" INTEGER NOT NULL,
     "timestamp" DATETIME NOT NULL,
     "is_read" INTEGER NOT NULL,
     "is_outgoing" INTEGER NOT NULL,
-    "last_indexed" DATETIME NOT NULL
+    "last_indexed" DATETIME NOT NULL,
+    "in_reply_to_id" TEXT,
+    FOREIGN KEY ("in_reply_to_id") REFERENCES "messages"("message_id") ON DELETE SET NULL
 );
 ```
+
+### The `message_references` table
+
+This table tracks the reply chain of emails, helping to reconstruct discussion 
+threads.
+
+```sql
+CREATE TABLE "message_references" (
+    "message_id" TEXT NOT NULL,
+    "refers_to_id" TEXT NOT NULL,
+    FOREIGN KEY ("message_id") REFERENCES "messages"("message_id") ON DELETE CASCADE,
+    PRIMARY KEY ("message_id", "refers_to_id")
+);
+```
+
+### The `attachments` table
+
+This table stores information about email attachments.
+
+```sql
+CREATE TABLE "attachments" (
+    "id" INTEGER NOT NULL PRIMARY KEY,
+    "message_id" TEXT NOT NULL,
+    "filename" TEXT NOT NULL,
+    "content_type" TEXT NOT NULL,
+    "size" INTEGER NOT NULL,
+    "content" BLOB NOT NULL,
+    "last_indexed" DATETIME NOT NULL,
+    FOREIGN KEY ("message_id") REFERENCES "messages"("message_id") ON DELETE CASCADE
+);
+```
+
 
 ## Example Queries
 
