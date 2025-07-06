@@ -4,6 +4,7 @@ from email.utils import parseaddr, parsedate_to_datetime
 from typing import Dict, List, Optional
 from datetime import datetime
 import re
+import uuid
 
 from .base import EmailProvider
 from ..message import Message
@@ -48,10 +49,10 @@ class IMAPProvider(EmailProvider):
         email_message = email.message_from_bytes(raw_msg)
         
         # Extract headers
-        msg_obj.id = email_message.get('Message-ID', '')
+        msg_obj.id = email_message.get('Message-ID', '').strip('<>')
         if not msg_obj.id:
             # Create a synthetic ID if none exists
-            msg_obj.id = f"imap-{hash(email_message.get('Date', '') + email_message.get('From', ''))}"
+            msg_obj.id = str(uuid.uuid4())
         
         msg_obj.thread_id = None
         

@@ -87,3 +87,50 @@ def test_get_message_is_not_read_if_seen_flag_is_absent(mock_imap_conn):
     # 3. Assert
     assert message.is_read is False
     mock_imap_conn.fetch.assert_called_with(b'1', '(FLAGS RFC822)')
+
+
+# A raw email message that is explicitly missing the Message-ID header.
+RAW_EMAIL_NO_MSG_ID = b"""From: sender@example.com
+To: receiver@example.com
+Subject: Another Test Email
+
+This email has no message ID.
+"""
+
+def test_parse_message_uses_existing_message_id():
+    """
+    Verify that _parse_imap_message uses the Message-ID from the header if present.
+    """
+    from mail_to_sqlite.providers.imap import IMAPProvider
+    import email
+
+    # We can test the private parsing method directly by passing in the raw bytes.
+    provider = IMAPProvider()
+    
+    message = provider._parse_imap_message(RAW_EMAIL_BYTES, labels={'INBOX': 'INBOX'})
+    
+    # The ID should be the one from the header, without the angle brackets.
+    # The provider's parsing logic should strip them.
+    assert message.id == 'test-id-123@example.com'
+
+
+def test_parse_message_generates_uuid_if_message_id_is_missing(mocker):
+    """
+    Verify _parse_imap_message generates a UUID if the Message-ID header is missing.
+    This test will fail until the implementation is updated.
+    """
+    from mail_to_sqlite.providers.imap import IMAPProvider
+    import email
+
+    # Mock uuid.uuid4 to return a predictable value
+    mock_uuid = mocker.patch('uuid.uuid4')
+    mock_uuid.return_value = 'a-fake-but-valid-uuid'
+    
+    provider = IMAPProvider()
+    
+    message = provider._parse_imap_message(RAW_EMAIL_NO_MSG_ID, labels={'INBOX': 'INBOX'})
+    
+    # Assert that our mocked UUID was used as the message ID.
+    assert message.id == 'a-fake-but-valid-uuid'
+    mock_uuid.assert_called_once()
+
