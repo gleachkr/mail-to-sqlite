@@ -90,6 +90,14 @@ def main():
         action="store_true",
     )
 
+    # Rebuild threads
+    parser_rebuild_threads = subparsers.add_parser(
+        "rebuild-threads", help="Rebuild message threads"
+    )
+    parser_rebuild_threads.add_argument(
+        "--data-dir", help="The path where the data should be stored", required=True
+    )
+
     args = parser.parse_args()
 
     prepare_data_dir(args.data_dir)
@@ -104,6 +112,7 @@ def main():
                 clobber=args.clobber or [],
                 download_attachments=args.download_attachments,
             )
+            db.rebuild_threads()
         elif args.command == "sync-message":
             sync.single_message(
                 args.provider,
@@ -112,6 +121,8 @@ def main():
                 clobber=args.clobber or [],
                 download_attachments=args.download_attachments,
             )
+        elif args.command == "rebuild-threads":
+            db.rebuild_threads()
     except KeyboardInterrupt:
         print("\nExiting gracefully...")
         sys.exit(0)

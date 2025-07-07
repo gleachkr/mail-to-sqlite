@@ -1,4 +1,3 @@
-
 import pytest
 from peewee import IntegrityError
 from mail_to_sqlite import db
@@ -8,6 +7,7 @@ from datetime import datetime
 # The data doesn't have to be perfect, just enough to satisfy the model.
 SAMPLE_MESSAGE_DATA_1 = {
     'id': 'message-1',
+    'rfc822_message_id': 'rfc822-message-1',
     'thread_id': 'thread-a',
     'sender': {'name': 'Sender 1', 'email': 'sender1@example.com'},
     'recipients': {'to': [{'name': 'Recipient 1', 'email': 'recipient1@example.com'}]},
@@ -22,6 +22,7 @@ SAMPLE_MESSAGE_DATA_1 = {
 
 SAMPLE_MESSAGE_DATA_2 = {
     'id': 'message-2',
+    'rfc822_message_id': 'rfc822-message-2',
     'thread_id': 'thread-a',
     'sender': {'name': 'Sender 2', 'email': 'sender2@example.com'},
     'recipients': {'to': [{'name': 'Recipient 2', 'email': 'recipient2@example.com'}]},
@@ -49,37 +50,6 @@ def memory_db_with_threading():
     yield in_memory_db
     
     in_memory_db.close()
-
-def test_message_can_reply_to_another(memory_db_with_threading):
-    """
-    Verify that we can establish a direct reply-to relationship
-    between two messages.
-    """
-    # 1. Arrange: Create two messages
-    message1_data = SAMPLE_MESSAGE_DATA_1.copy()
-    message2_data = SAMPLE_MESSAGE_DATA_2.copy()
-
-    # The `create_message` function expects an object with attributes,
-    # not a dictionary. We can use a simple custom class for this.
-    class MockMessage:
-        def __init__(self, **kwargs):
-            self.__dict__.update(kwargs)
-
-    db.create_message(MockMessage(**message1_data))
-    db.create_message(MockMessage(**message2_data))
-
-    # 2. Act: Update the second message to be a reply to the first
-    message2 = db.Message.get(db.Message.message_id == 'message-2')
-    message2.in_reply_to = 'message-1'
-    message2.save()
-
-    # 3. Assert: Check the relationship
-    message1 = db.Message.get(db.Message.message_id == 'message-1')
-    message2 = db.Message.get(db.Message.message_id == 'message-2')
-
-    assert message2.in_reply_to == message1
-    assert message1.replies.count() == 1
-    assert message1.replies.get() == message2
 
 
 def test_message_can_have_multiple_references(memory_db_with_threading):

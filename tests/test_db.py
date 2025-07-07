@@ -61,6 +61,7 @@ from datetime import datetime
 # The data doesn't have to be perfect, just enough to satisfy the model.
 SAMPLE_MESSAGE_DATA = {
     'id': 'test-message-123',
+    'rfc822_message_id': 'rfc822-test-message-123',
     'thread_id': 'thread-abc',
     'sender': {'name': 'Test Sender', 'email': 'sender@example.com'},
     'recipients': {'to': [{'name': 'Test Recipient', 'email': 'recipient@example.com'}]},
@@ -97,7 +98,7 @@ def memory_db():
     db.database_proxy.initialize(in_memory_db)
     
     # Create the tables. This uses the models' definitions.
-    in_memory_db.create_tables([db.Message, db.Attachment])
+    in_memory_db.create_tables([db.Message, db.Attachment, db.MessageReference])
     
     # Yield control to the test function.
     yield in_memory_db
@@ -191,6 +192,72 @@ def test_create_message_updates_last_indexed_on_duplicate_no_clobber(memory_db):
     # The last_indexed timestamp SHOULD have changed.
     assert final_saved_message.last_indexed > original_last_indexed
 
+def test_create_message_saves_thread_info(memory_db):
+    """
+    Verify `create_message` saves threading info to the correct places.
+    - The raw `in_reply_to` header goes into the `in_reply_to` text column.
+    - All references (`in_reply_to` + `references` headers) go into the
+      `message_references` table.
+    - The `in_reply_to_id` foreign key column remains NULL.
+    """
+    # 1. Arrange: A message that is a reply to a parent and references a grandparent.
+    message_data = SAMPLE_MESSAGE_DATA.copy()
+    message_data['in_reply_to'] = 'parent-id'
+    message_data['references'] = ['grandparent-id', 'parent-id']
+    message_obj = type('Message', (), message_data)
+
+    # 2. Act: Create the message.
+    db.create_message(message_obj)
+
+    # 3. Assert:
+    # Check the main messages table for correct state.
+    saved_message = db.Message.get(db.Message.message_id == 'test-message-123')
+    assert saved_message.in_reply_to == 'parent-id' # The new text field
+    assert saved_message.in_reply_to_id is None      # The foreign key is NULL
+
+    # Check the message_references table for a complete log.
+    references = db.MessageReference.select().where(
+        db.MessageReference.message == 'test-message-123'
+    ).order_by(db.MessageReference.refers_to_id)
+
+    assert references.count() == 2
+    assert references[0].refers_to_id == 'grandparent-id'
+    assert references[1].refers_to_id == 'parent-id'
+
+
+def test_rebuild_threads_links_correct_parent(memory_db):
+    """
+    Verify `rebuild_threads` correctly links a message to its direct parent
+    using the `in_reply_to` text field, not just any reference.
+    """
+    # 1. Arrange: Create a grandparent, parent, and child message.
+    grandparent_data = {**SAMPLE_MESSAGE_DATA, 'id': 'grandparent', 'rfc822_message_id': 'grandparent-id'}
+    parent_data = {**SAMPLE_MESSAGE_DATA, 'id': 'parent', 'rfc822_message_id': 'parent-id', 'in_reply_to': 'grandparent-id'}
+    child_data = {
+        **SAMPLE_MESSAGE_DATA,
+        'id': 'child',
+        'rfc822_message_id': 'child-id',
+        'in_reply_to': 'parent-id',
+        'references': ['grandparent-id', 'parent-id']
+    }
+
+    db.create_message(type('Message', (), grandparent_data))
+    db.create_message(type('Message', (), parent_data))
+    db.create_message(type('Message', (), child_data))
+
+    # 2. Act: Rebuild the threads.
+    db.rebuild_threads()
+
+    # 3. Assert: Check that the foreign keys are now correctly set.
+    grandparent = db.Message.get(db.Message.message_id == 'grandparent')
+    parent = db.Message.get(db.Message.message_id == 'parent')
+    child = db.Message.get(db.Message.message_id == 'child')
+
+    assert child.in_reply_to_id.message_id == 'parent'
+    assert parent.in_reply_to_id.message_id == 'grandparent'
+    assert grandparent.in_reply_to_id is None
+    
+    
 def test_save_attachment_fails_without_parent_message(memory_db):
     """
     Verify that saving an attachment fails with an IntegrityError

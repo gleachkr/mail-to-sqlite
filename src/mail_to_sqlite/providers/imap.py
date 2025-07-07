@@ -61,15 +61,18 @@ class IMAPProvider(EmailProvider):
         
         # Extract headers
         raw_id = email_message.get('Message-ID', '')
-        if raw_id.startswith('<') and raw_id.endswith('>'):
-            msg_obj.id = raw_id[1:-1]
-        else:
-            msg_obj.id = raw_id
-
-        if not msg_obj.id:
-            # Create a synthetic ID if none exists
+        if not raw_id:
+            # Create a synthetic ID if none exists.
             msg_obj.id = str(uuid.uuid4())
-        
+            msg_obj.rfc822_message_id = msg_obj.id
+        else:
+            if raw_id.startswith('<') and raw_id.endswith('>'):
+                msg_obj.id = raw_id[1:-1]
+                msg_obj.rfc822_message_id = raw_id[1:-1]
+            else:
+                msg_obj.id = raw_id
+                msg_obj.rfc822_message_id = raw_id
+
         msg_obj.thread_id = None
         
         # Parse From

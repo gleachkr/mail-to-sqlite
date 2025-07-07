@@ -83,6 +83,8 @@ class GmailProvider(EmailProvider):
                 except Exception as e:
                     print(f"Warning: Could not parse date '{value}': {e}")
                     m.timestamp = datetime.now()
+            elif name == "message-id":
+                m.rfc822_message_id = value.strip('<>')
             elif name == "in-reply-to":
                 m.in_reply_to = value.strip('<>')
             elif name == "references":

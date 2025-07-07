@@ -25,7 +25,9 @@ database_proxy = Proxy()
 
 class Message(Model):
     message_id = TextField(unique=True)
-    in_reply_to = ForeignKeyField(
+    rfc822_message_id = TextField(unique=True, null=True, index=True)
+    in_reply_to = TextField(null=True)
+    in_reply_to_id = ForeignKeyField(
         'self',
         field='message_id',
         backref='replies',
@@ -91,7 +93,7 @@ def get_expected_schema():
         "messages": [
             "id", "message_id", "thread_id", "sender", "recipients",
             "labels", "subject", "body", "size", "timestamp", "is_read",
-            "is_outgoing", "last_indexed", "in_reply_to_id"
+            "is_outgoing", "last_indexed", "in_reply_to", "in_reply_to_id", "rfc822_message_id"
         ],
         "message_references": ["message_id", "refers_to_id"],
         "attachments": [
@@ -170,9 +172,14 @@ def create_tables(db):
         "is_read" INTEGER NOT NULL,
         "is_outgoing" INTEGER NOT NULL,
         "last_indexed" DATETIME NOT NULL,
+        "rfc822_message_id" TEXT UNIQUE,
+        "in_reply_to" TEXT,
         "in_reply_to_id" TEXT,
         FOREIGN KEY ("in_reply_to_id") REFERENCES "messages"("message_id") ON DELETE SET NULL
     );
+    """)
+    db.execute_sql("""
+    CREATE INDEX "idx_rfc822_message_id" ON "messages"("rfc822_message_id");
     """)
 
     # This table maps the 'References' header to messages, tracking thread history.
@@ -209,8 +216,17 @@ def create_message(msg, clobber=None):
 
     last_indexed = datetime.now()
 
+    in_reply_to = getattr(msg, 'in_reply_to', None)
+    if in_reply_to:
+        in_reply_to = in_reply_to.strip('<>')
+
+    rfc822_message_id = getattr(msg, 'rfc822_message_id', None)
+    if rfc822_message_id:
+        rfc822_message_id = rfc822_message_id.strip('<>')
+
     message_data = {
-        "message_id": msg.id,
+        "message_id": msg.id.strip('<>'),
+        "rfc822_message_id": rfc822_message_id,
         "thread_id": msg.thread_id,
         "sender": msg.sender,
         "recipients": msg.recipients,
@@ -222,10 +238,9 @@ def create_message(msg, clobber=None):
         "is_read": msg.is_read,
         "is_outgoing": msg.is_outgoing,
         "last_indexed": last_indexed,
+        "in_reply_to": in_reply_to,
+        "in_reply_to_id": None,
     }
-
-    if hasattr(msg, 'in_reply_to') and msg.in_reply_to:
-        message_data['in_reply_to'] = msg.in_reply_to
 
     update_data = {
         Message.last_indexed: last_indexed,
@@ -240,13 +255,48 @@ def create_message(msg, clobber=None):
     )
     query.execute()
 
+    references = []
+    if hasattr(msg, 'in_reply_to') and msg.in_reply_to:
+        references.append(msg.in_reply_to)
     if hasattr(msg, 'references') and msg.references:
+        references.extend(msg.references)
+    
+    if references:
         with database_proxy.atomic():
-            for ref_id in msg.references:
+            for ref_id in set(references):
                 MessageReference.insert(
-                    message=msg.id,
-                    refers_to_id=ref_id
+                    message=msg.id.strip('<>'),
+                    refers_to_id=ref_id.strip('<>')
                 ).on_conflict_ignore().execute()
+
+
+def rebuild_threads():
+    """
+    Rebuilds the in_reply_to_id column for all messages.
+    """
+    print("Rebuilding message threads...")
+    
+    # Create a subquery to find the corresponding message_id for each rfc822_message_id
+    Parent = Message.alias()
+    subquery = (
+        Parent
+        .select(Parent.message_id)
+        .where(Parent.rfc822_message_id == Message.in_reply_to)
+    )
+
+    # Update the in_reply_to_id column with the message_id found in the subquery
+    query = (
+        Message
+        .update(in_reply_to_id=subquery)
+        .where(
+            Message.in_reply_to.is_null(False) &
+            Message.in_reply_to_id.is_null(True)
+        )
+    )
+
+    updated_count = query.execute()
+
+    print(f"Updated {updated_count} message threads.")
 
 
 def last_indexed() -> datetime:

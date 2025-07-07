@@ -94,6 +94,34 @@ def test_sync_single_message_end_to_end(mocker, tmp_path, mock_message_one):
     assert result[1] == mock_message_one.subject
 
 
+def test_rebuild_threads_command(mocker, tmp_path):
+    """
+    Test the 'rebuild-threads' command.
+    """
+    # 1. Arrange
+    data_dir = str(tmp_path)
+    mock_db_init = mocker.patch("mail_to_sqlite.db.init")
+    mock_rebuild_threads = mocker.patch("mail_to_sqlite.db.rebuild_threads")
+    
+    mocker.patch.object(
+        sys,
+        "argv",
+        [
+            "mail_to_sqlite",
+            "rebuild-threads",
+            "--data-dir",
+            data_dir,
+        ],
+    )
+
+    # 2. Act
+    main()
+
+    # 3. Assert
+    mock_db_init.assert_called_once_with(data_dir)
+    mock_rebuild_threads.assert_called_once()
+
+
 def test_main_exits_with_error_on_invalid_provider(mocker, capsys, tmp_path):
     """
     Verify that the main function exits and prints an error message

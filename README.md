@@ -46,7 +46,7 @@ the `--data-dir` that you pass to the program.
 ### Basic Command Structure
 
 ```
-mail_to_sqlite {sync,sync-message} [OPTIONS]
+mail_to_sqlite {sync,sync-message,rebuild-threads} [OPTIONS]
 ```
 
 ### Syncing All Messages
@@ -58,7 +58,8 @@ mail_to_sqlite sync --data-dir PATH/TO/DATA --provider [gmail|imap]
 This creates and updates a SQLite database at `PATH/TO/DATA/messages.db`. On 
 the first sync it will pull down everything. Subsequent syncs are incremental 
 (IMAP only lets you specify a time range with day-level granularity though, so 
-you might still pull down some already downloaded emails).
+you might still pull down some already downloaded emails). After a successful 
+sync, the message threads are automatically rebuilt.
 
 ### Syncing a Single Message
 
@@ -66,10 +67,22 @@ you might still pull down some already downloaded emails).
 mail_to_sqlite sync-message --data-dir PATH/TO/DATA --message-id MESSAGE_ID
 ```
 
+### Rebuilding Message Threads
+
+If a sync is interrupted, or if you need to manually rebuild the email
+thread relationships, you can use the `rebuild-threads` command:
+
+```
+mail_to_sqlite rebuild-threads --data-dir PATH/TO/DATA
+```
+
+This command will update the `in_reply_to_id` column for all messages,
+linking them to their parent messages where possible.
+
 ### Command-line Parameters
 
 ```
-usage: mail_to_sqlite [-h] {sync,sync-message} ...
+usage: mail_to_sqlite [-h] {sync,sync-message,rebuild-threads} ...
 
 options:
   -h, --help                Show this help message and exit
@@ -107,6 +120,8 @@ CREATE TABLE "messages" (
     "is_read" INTEGER NOT NULL,
     "is_outgoing" INTEGER NOT NULL,
     "last_indexed" DATETIME NOT NULL,
+    "rfc822_message_id" TEXT UNIQUE,
+    "in_reply_to" TEXT,
     "in_reply_to_id" TEXT,
     FOREIGN KEY ("in_reply_to_id") REFERENCES "messages"("message_id") ON DELETE SET NULL
 );
