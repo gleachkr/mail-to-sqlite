@@ -218,11 +218,11 @@ def create_message(msg, clobber=None):
 
     in_reply_to = getattr(msg, 'in_reply_to', None)
     if in_reply_to:
-        in_reply_to = in_reply_to.strip('<>')
+        in_reply_to = in_reply_to.strip().strip('<>')
 
     rfc822_message_id = getattr(msg, 'rfc822_message_id', None)
     if rfc822_message_id:
-        rfc822_message_id = rfc822_message_id.strip('<>')
+        rfc822_message_id = rfc822_message_id.strip().strip('<>')
 
     message_data = {
         "message_id": msg.id.strip('<>'),
@@ -266,7 +266,7 @@ def create_message(msg, clobber=None):
             for ref_id in set(references):
                 MessageReference.insert(
                     message=msg.id.strip('<>'),
-                    refers_to_id=ref_id.strip('<>')
+                    refers_to_id=ref_id.strip().strip('<>')
                 ).on_conflict_ignore().execute()
 
 
@@ -281,7 +281,7 @@ def rebuild_threads():
     subquery = (
         Parent
         .select(Parent.message_id)
-        .where(Parent.rfc822_message_id == Message.in_reply_to)
+        .where(fn.TRIM(Parent.rfc822_message_id) == fn.TRIM(Message.in_reply_to))
     )
 
     # Update the in_reply_to_id column with the message_id found in the subquery
