@@ -120,11 +120,12 @@ CREATE TABLE "messages" (
     "is_read" INTEGER NOT NULL,
     "is_outgoing" INTEGER NOT NULL,
     "last_indexed" DATETIME NOT NULL,
-    "rfc822_message_id" TEXT UNIQUE,
+    "rfc822_message_id" TEXT,
     "in_reply_to" TEXT,
     "in_reply_to_id" TEXT,
     FOREIGN KEY ("in_reply_to_id") REFERENCES "messages"("message_id") ON DELETE SET NULL
 );
+CREATE UNIQUE INDEX "idx_rfc822_message_id" ON "messages"("rfc822_message_id");
 ```
 
 ### Finding Replies

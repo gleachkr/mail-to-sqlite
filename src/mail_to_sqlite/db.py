@@ -25,7 +25,7 @@ database_proxy = Proxy()
 
 class Message(Model):
     message_id = TextField(unique=True)
-    rfc822_message_id = TextField(unique=True, null=True, index=True)
+    rfc822_message_id = TextField(unique=True, null=True)
     in_reply_to = TextField(null=True)
     in_reply_to_id = ForeignKeyField(
         'self',
@@ -172,14 +172,14 @@ def create_tables(db):
         "is_read" INTEGER NOT NULL,
         "is_outgoing" INTEGER NOT NULL,
         "last_indexed" DATETIME NOT NULL,
-        "rfc822_message_id" TEXT UNIQUE,
+        "rfc822_message_id" TEXT,
         "in_reply_to" TEXT,
         "in_reply_to_id" TEXT,
         FOREIGN KEY ("in_reply_to_id") REFERENCES "messages"("message_id") ON DELETE SET NULL
     );
     """)
     db.execute_sql("""
-    CREATE INDEX "idx_rfc822_message_id" ON "messages"("rfc822_message_id");
+    CREATE UNIQUE INDEX "idx_rfc822_message_id" ON "messages"("rfc822_message_id");
     """)
 
     # This table maps the 'References' header to messages, tracking thread history.
